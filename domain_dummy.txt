@@ -35,6 +35,7 @@
 ('Miercuri', '(12, 14)', 'EG390', 'Cristina Dumitrescu')
 ('Miercuri', '(12, 14)', 'EG390', 'Elena Gheorghe') 
 ('Miercuri', '(12, 14)', 'EG390', 'Roxana Gheorghe')
+
 ********** IA **********
 ('Luni', '(8, 10)', 'EG324', 'Andreea Dinu')
 ('Luni', '(8, 10)', 'EG324', 'Pavel Filipescu')
@@ -44,16 +45,17 @@
 ('Luni', '(12, 14)', 'EG324', 'Pavel Filipescu')
 ('Marti', '(8, 10)', 'EG324', 'Andreea Dinu') 
 ('Marti', '(8, 10)', 'EG324', 'Pavel Filipescu')
-('Marti', '(10, 12)', 'EG324', 'Andreea Dinu') 5
+('Marti', '(10, 12)', 'EG324', 'Andreea Dinu')
 ('Marti', '(10, 12)', 'EG324', 'Pavel Filipescu')
 ('Marti', '(12, 14)', 'EG324', 'Andreea Dinu')
 ('Marti', '(12, 14)', 'EG324', 'Pavel Filipescu')
 ('Miercuri', '(8, 10)', 'EG324', 'Andreea Dinu')
 ('Miercuri', '(8, 10)', 'EG324', 'Pavel Filipescu')
 ('Miercuri', '(10, 12)', 'EG324', 'Andreea Dinu')
-('Miercuri', '(10, 12)', 'EG324', 'Pavel Filipescu') 6
+('Miercuri', '(10, 12)', 'EG324', 'Pavel Filipescu')
 ('Miercuri', '(12, 14)', 'EG324', 'Andreea Dinu')
 ('Miercuri', '(12, 14)', 'EG324', 'Pavel Filipescu')
+
 ********** MS **********
 ('Luni', '(8, 10)', 'EG324', 'Cristina Dumitrescu') 
 ('Luni', '(8, 10)', 'EG324', 'Roxana Gheorghe') 2
