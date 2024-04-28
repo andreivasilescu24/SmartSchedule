@@ -24,20 +24,32 @@ def generate_neighbours(curr_state):
 
     return neighbours
 
-# def heuristic(timetable):
-#     # assigned_subjects = set(slot[0] for slot in timetable)
-#     global rooms
-#     global subjects
-#     unassigned_subjects = set(list(lambda subj: subjects[subj] > 0, filter(subjects.keys())))
-#     return len(unassigned_subjects
+
 def transition_cost(neighbour):
     global soft_constraints
+    global rooms
+    global subjects
+
     cost_neighbour = 1
     for slot in neighbour:
         if slot[1] not in soft_constraints[teacher]['preffered_days']:
             cost_neighbour += 1
         if slot[2] not in soft_constraints[teacher]['preffered_intervals']:
             cost_neighbour += 1
+
+    total_studs_assigned = {}
+    for subject in subjects.keys():
+        total_studs_assigned[subject] = 0
+
+    for slot in neighbour[:-1]:
+        total_studs_assigned[slot[0]] += rooms[slot[3]]['Capacitate']
+
+
+    total_studs_need_assignment = {subject: subjects[subject] - total_studs_assigned[subject] for subject in subjects.keys()}
+
+
+    if subject == neighbour[-1][0] and total_studs_need_assignment[subject] <= 0:
+        cost_neighbour += 1
 
     return cost_neighbour
                
@@ -73,7 +85,6 @@ def is_final(timetable):
     
 
 def is_in_discovered(timetable, discovered):
-    # timetable_set = set(timetable)
     for state in discovered:
         if set(state[0]) == set(timetable):
             return True
@@ -110,18 +121,26 @@ def astar(initial_state):
         if is_final(curr_state):
             return curr_state
 
+        g_curr_state, index_curr_state = get_g(curr_state, discovered)
+        print(f'Got current state {curr_state} with G cost {g_curr_state} and index {index_curr_state}')
+
         for neighbour in generate_neighbours(curr_state):
             g_neighbour, index_neighbour = get_g(neighbour, discovered)
-            g_curr_state, index_curr_state = get_g(curr_state, discovered)
-            if is_in_discovered(neighbour, discovered) and g_curr_state + transition_cost(neighbour) < g_neighbour:
-                print(f'Updated neighbour {neighbour} with cost {g_curr_state + transition_cost(neighbour) + heuristic(neighbour)}')
+            print(f'Got neighbour {neighbour} with G cost {g_neighbour} and index {index_neighbour}')
+            g_score_test = g_curr_state + transition_cost(neighbour)
+            if is_in_discovered(neighbour, discovered) and g_score_test < g_neighbour:
+                print(f'Updated neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
+                print('************************************')
+
                 discovered.pop(index_neighbour)
-                discovered.append((neighbour, g_curr_state + transition_cost(neighbour)))
-                heappush(opened, (g_curr_state + transition_cost(neighbour) + heuristic(neighbour), neighbour))
+                discovered.append((neighbour, g_score_test))
+                heappush(opened, (g_score_test + heuristic(neighbour), neighbour))
             elif not is_in_discovered(neighbour, discovered):
-                print(f'Added neighbour {neighbour} with cost {g_curr_state + transition_cost(neighbour) + heuristic(neighbour)}')
-                discovered.append((neighbour, g_curr_state + transition_cost(neighbour)))
-                heappush(opened, (g_curr_state + transition_cost(neighbour) + heuristic(neighbour), neighbour))
+                print(f'Added neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
+                print('************************************')
+
+                discovered.append((neighbour, g_score_test))
+                heappush(opened, (g_score_test + heuristic(neighbour), neighbour))
     
     return None
 
@@ -303,8 +322,8 @@ if __name__ == '__main__':
         astar_options = []
         initial_state = []
 
-        for subject in subjects:
-            for day in days:
+        for day in days:
+            for subject in subjects:
                 for interval in intervals:
                     for room in rooms:
                         if check_subject_room_compatibility(subject, room, subjects, rooms):
