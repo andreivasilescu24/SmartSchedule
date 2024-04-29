@@ -6,7 +6,28 @@ import math
 from functools import cmp_to_key
 from heapq import heappush, heappop
 
-def generate_neighbours(curr_state):
+
+class Timetable:
+    def __init__(self, timetable):
+        self.timetable = timetable
+
+
+def check_teacher_simultaneously(teacher, curr_state, day, interval):
+    for classroom, subject_assigned in curr_state[day][interval].items():
+        if subject_assigned != None and subject_assigned[0] == teacher:
+            return True
+    return False
+
+def check_teacher_number_hours(teacher, curr_state):
+    count = 0
+    for day, time_intervals in curr_state.items():
+        for interval, classrooms in time_intervals.items():
+            for classroom, assigned_subject in classrooms.items():
+                if assigned_subject != None and assigned_subject[0] == teacher:
+                    count += 1
+    return count
+
+def generate_neighbours(curr_state, total_studs_assigned):
     global rooms
     global subjects
     global teachers
@@ -14,67 +35,25 @@ def generate_neighbours(curr_state):
     global intervals
     neighbours = []
 
-    total_studs_assigned = {}
-    for subject in subjects.keys():
-        total_studs_assigned[subject] = 0
-
-    for slot in curr_state:
-        total_studs_assigned[slot[0]] += rooms[slot[3]]['Capacitate']
-
     total_studs_need_assignment = {subject: subjects[subject] - total_studs_assigned[subject] for subject in subjects.keys()}
-
-    # cost = check_teacher_availability(value, solution) + check_room_availability(value, solution) +\
-    #         check_teacher_num_hours(value, solution) + check_soft_constraints(value)
     
     for day in days:
         for interval in intervals:
-            for subject in subjects:
-                if total_studs_need_assignment[subject] > 0:
-                    for room in rooms:
-                        if subject in rooms[room][utils.MATERII]:
-                            # input()
-                            if check_room_availability((day, interval, room, None), curr_state) >= 1000:
-                                continue
-                            for teacher in teachers:
-                                if subject in teachers[teacher][utils.MATERII]:
-                                    if check_teacher_availability((day, interval, room, teacher), curr_state) +\
-                                        check_teacher_num_hours((day, interval, room, teacher), curr_state)  < 1000:
-                                            neighbours.append(curr_state + [(subject, day, interval, room, teacher)])
-                                    
-                                
+            for room in rooms:
+                if curr_state[day][interval][room] != None:
+                    continue
+                for subject in subjects:
+                    if subject not in rooms[room][utils.MATERII] or total_studs_need_assignment[subject] <= 0:
+                        continue
+                    for teacher in teachers:
+                        if subject not in teachers[teacher][utils.MATERII] or\
+                              check_teacher_simultaneously(teacher, curr_state, day, interval) or\
+                                  check_teacher_number_hours(teacher, curr_state) >= 7:
+                            continue
+                        neighbours.append(copy.deepcopy(curr_state))
+                        neighbours[-1][day][interval][room] = (teacher, subject)
+                                                                           
     return neighbours
-
-
-# def check_teacher_availability (value, solution):
-#     cost = 0
-#     for var in solution:
-#         if var[4] == value[3] and var[1] == value[0] and string_to_tuple(value[1]) == string_to_tuple(var[2]):
-#             cost += 10
-#             # print(f'Teacher availability {value} is not available because of {var}')
-#     return cost
-
-
-# def check_room_availability (value, solution):
-#     cost = 0
-#     for var in solution:
-#         if var[3] == value[2] and var[1] == value[0] and string_to_tuple(value[1]) == string_to_tuple(var[2]):
-#             cost += 10
-#             # print(f'Intervals {var[2][0]} {value[1][0]},  {var[2][1]}, {value[1][1]}')
-#             # print(f' Room availability {value} is not available because of {var}')
-#     return cost
-
-
-# def check_teacher_num_hours (value, solution):
-#     cost = 0
-#     count = 0
-#     for var in solution:
-#         if var[4] == value[3]:
-#             count += 1
-#     if count >= 7:
-#         cost = 1000
-#         # print(f'{value} is not available because of {count}')
-
-#     return cost
 
 
 def transition_cost(neighbour, curr_state):
@@ -82,153 +61,150 @@ def transition_cost(neighbour, curr_state):
     global rooms
     global subjects
     global teachers
-    global sorted_subjects_by_rooms
-    global teacher_constraints
 
     cost_neighbour = 1
-    for slot in neighbour:
-        if slot[1] not in soft_constraints[slot[4]]['preffered_days']:
-            # print('Not preffered day')
-            cost_neighbour += 1000
-        if slot[2] not in soft_constraints[slot[4]]['preffered_intervals']:
-            # print(f'Not preffered interval {slot[2]} in {soft_constraints[teacher]["preffered_intervals"]}')
-            cost_neighbour += 1000
-
-    # cost_neighbour += solution_cost(neighbour[-1][1:], curr_state)
-    
+    for day, time_interval in neighbour.items():
+        for interval, classrooms in time_interval.items():
+            for classroom, assigned_subject in classrooms.items():
+                if assigned_subject != None:
+                    if interval not in soft_constraints[assigned_subject[0]]['preffered_intervals']:
+                        cost_neighbour += 10
+                    if day not in soft_constraints[assigned_subject[0]]['preffered_days']:
+                        cost_neighbour += 10
 
     return cost_neighbour
                
 
-def heuristic(timetable):
+def heuristic(timetable, total_studs_assigned):
     global rooms
     global subjects   
-    global subject_available_rooms
+    global sorted_subjects_by_rooms
+    global sorted_rooms_by_capacity
 
-    total_studs_assigned = {subject: 0 for subject in subjects.keys()}
+    max_classroom_capacity = {subject: max(room_details['Capacitate'] for room_details in rooms.values() if subject in room_details[utils.MATERII]) 
+                              for subject in subjects.keys()}
+    # slots_needed = {subject: math.floor((subjects[subject] - total_studs_assigned[subject]) / max_classroom_capacity[subject])
+    #                 if subjects[subject] - total_studs_assigned[subject] > 0 else 0 
+    #                 for subject in subjects.keys()}
+    
+    slots_needed = {subject: (subjects[subject] - total_studs_assigned[subject])
+                    if subjects[subject] - total_studs_assigned[subject] > 0 else 0 
+                    for subject in subjects.keys()}
 
-    for slot in timetable:
-        total_studs_assigned[slot[0]] += rooms[slot[3]]['Capacitate']
-
-    max_classroom_capacity = {subject: max(room_details['Capacitate'] for room_details in rooms.values() if subject in room_details[utils.MATERII]) for subject in subjects.keys()}
-    slots_needed = {subject: math.ceil((subjects[subject] - total_studs_assigned[subject]) / max_classroom_capacity[subject]) if subjects[subject] - total_studs_assigned[subject] > 0 else 0 for subject in subjects.keys()}
+    # print(slots_needed)
 
     cost = sum(slots_needed.values()) * 100
 
-    if len(timetable):
-        cost += subject_available_rooms[timetable[-1][0]]
-        cost += teacher_constraints[timetable[-1][4]]
+    for day, intervals in timetable.items():
+        for interval, classrooms in intervals.items():
+            for classroom, assigned_subject in classrooms.items():
+                if assigned_subject != None:
+                    cost += sorted_subjects_by_rooms[assigned_subject[1]]
+                    cost += sorted_teacher_constraints[assigned_subject[0]]
+                    cost += sorted_rooms_by_capacity[classroom]
 
     return cost
 
 
-def is_final(timetable):
+def is_final(total_studs_assigned):
     global rooms
     global total_studs
-    # print()
-    # print('***************** IS FINAL ?*****************')
-    total_studs_assigned = {}
-    
-    total_studs_assigned = {subject: 0 for subject in subjects.keys()}
-    for slot in timetable:
-        total_studs_assigned[slot[0]] += rooms[slot[3]]['Capacitate']
-    
+
     diff_studs = {subject: subjects[subject] - total_studs_assigned[subject] for subject in subjects.keys()}
     print(diff_studs)
-    # print('***************** IS FINAL ?*****************')
-    return sum(diff_studs.values()) <= 0
-    
-
-def is_in_discovered(timetable, discovered):
-    for state in discovered:
-        if set(state[0]) == set(timetable):
-            return True
-    return False
-
-def get_g(timetable, discovered):
-    for index, state in enumerate(discovered):
-        if set(state[0]) == set(timetable):
-            return state[1], index
-    return -1, -1
+    for subject, total_studs in diff_studs.items():
+        if total_studs > 0:
+            return False
+    return True
 
 
-def print_heap(heap):
-    for elem in heap:
-        print(f'{elem[1]}, cost {elem[0]}')
-
-def sorted_teachers_neighbours(neighbours):
-    global soft_constraints
-    neighbour_teachers = set([slot[4] for neighbour in neighbours for slot in neighbour])
-    return sorted(neighbour_teachers, key=lambda x: len(soft_constraints[x]['preffered_days']) +\
-                   len(soft_constraints[x]['preffered_intervals']))
+def get_total_studs_assigned(orar):
+    total_studs_assigned = {subject: 0 for subject in subjects.keys()}
+    for day, intervals in orar.timetable.items():
+        for interval, classrooms in intervals.items():
+            for classroom, assigned_subject in classrooms.items():
+                if assigned_subject != None:
+                    total_studs_assigned[assigned_subject[1]] += rooms[classroom]['Capacitate']
+    return total_studs_assigned
 
 def astar(initial_state):
     opened = []
-    heappush(opened, (0 + heuristic(initial_state), initial_state))
-    # print(opened)
-    discovered = []
-    discovered.append((initial_state, 0))
+    index = 0
+    heappush(opened, (0 + heuristic(initial_state.timetable, {subject: 0 for subject in subjects}), index, initial_state))
+    print(opened)
+    discovered = {initial_state: 0}
+    print(discovered)
+    # discovered.append((initial_state, 0))
 
+    # print('aici')
     while opened:
-        curr_f_cost, curr_state = heappop(opened)
+        # print(f'LEN HEAP {len(opened)}')
+        curr_f_cost, index_state, curr_state = heappop(opened)
+        # print(curr_f_cost)
+        total_studs_assigned = get_total_studs_assigned(curr_state)
+
         printable_solution = {}
         for day in days:
             printable_solution[day] = {}
             for interval in intervals:
-                my_interval = string_to_tuple(interval)
-                printable_solution[day][my_interval] = {}
+                tuple_int = string_to_tuple(interval)
+                printable_solution[day][tuple_int] = {}
                 for room in rooms:
-                    printable_solution[day][my_interval][room] = {}
+                    printable_solution[day][tuple_int][room] = {}
 
-        for var in curr_state:
-            day, interval, room, teacher = var[1], var[2], var[3], var[4]
-            my_interval = string_to_tuple(interval)
-            printable_solution[day][my_interval][room] = (teacher, var[0])
+        for day, time_intervals in curr_state.timetable.items():
+            for interval, classrooms in time_intervals.items():
+                for classroom, assigned_subject in classrooms.items():
+                    if assigned_subject != None:
+                        printable_solution[day][string_to_tuple(interval)][classroom] = curr_state.timetable[day][interval][classroom]
 
-        print(utils.pretty_print_timetable_aux_zile(printable_solution, "inputs/orar_mediu_relaxat.yaml"))
+
+        # print(utils.pretty_print_timetable_aux_zile(printable_solution, "inputs/orar_mediu_relaxat.yaml"))
         # input()
-        # print()
 
-        print(f'Got current state {curr_state}')
-        if is_final(curr_state):
+        if is_final(total_studs_assigned):
             return curr_state
+        g_curr_state = discovered[curr_state] 
 
-        g_curr_state, index_curr_state = get_g(curr_state, discovered) 
-        print(f'\nCurrent state {curr_state} with cost {g_curr_state}')
-        # input()
+        total_studs_need_assignment = {subject: subjects[subject] - total_studs_assigned[subject] for subject in subjects.keys()}
+        print(f'Total studs need assignment: {total_studs_need_assignment}')
+    
+        for day in days:
+            for interval in intervals:
+                for room in rooms:
+                    if curr_state.timetable[day][interval][room] != None:
+                        continue
+                    for subject in subjects:
+                        if subject not in rooms[room][utils.MATERII] or total_studs_need_assignment[subject] <= 0:
+                            continue
+                        for teacher in teachers:
+                            if subject not in teachers[teacher][utils.MATERII] or\
+                                check_teacher_simultaneously(teacher, curr_state.timetable, day, interval) or\
+                                    check_teacher_number_hours(teacher, curr_state.timetable) >= 7:
+                                continue
+                            n = copy.deepcopy(curr_state.timetable)
+                            n[day][interval][room] = (teacher, subject)
+                            neighbour = Timetable(n)
+                # for neighbour in neighbours: 
+                            if neighbour in discovered:
+                                g_neighbour = discovered[neighbour]
 
-        neighbours = generate_neighbours(curr_state)
-        # sorted_neighbours = sorted_teachers_neighbours(neighbours)
-        for neighbour in neighbours:
-            g_neighbour, index_neighbour = get_g(neighbour, discovered)
-            # print(f'Got neighbour {neighbour} with G cost {g_neighbour} and index {index_neighbour}')
-            g_score_test = g_curr_state + transition_cost(neighbour, curr_state)
-            # print(f'************* G score test {g_score_test}')
-            # input()
-            # g_score_test = curr_f_cost + transition_cost(neighbour)
-            if is_in_discovered(neighbour, discovered) and g_score_test < g_neighbour:
-                # print(f'**************** H score {heuristic(neighbour)}')
-                # print(f'Updated neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
-                # input()
-
-                # print('************************************')
-
-                discovered.pop(index_neighbour)
-                discovered.append((neighbour, g_score_test))
-                heappush(opened, (g_score_test + heuristic(neighbour), neighbour))
-            elif not is_in_discovered(neighbour, discovered):
-                # print(f'**************** H score {heuristic(neighbour)}')
-                # print(f'Added neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
-                # print('************************************')
-
-                discovered.append((neighbour, g_score_test))
-                heappush(opened, (g_score_test + heuristic(neighbour), neighbour))
+                            tentative_g_cost = g_curr_state + transition_cost(neighbour.timetable, curr_state.timetable)
+                            if neighbour in discovered and tentative_g_cost < g_neighbour:
+                                index += 1
+                                discovered[neighbour] = tentative_g_cost
+                                heappush(opened, (tentative_g_cost + heuristic(neighbour.timetable, total_studs_assigned), index, neighbour))
+                            elif neighbour not in discovered:
+                                index += 1
+                                discovered[neighbour] = tentative_g_cost
+                                heappush(opened, (tentative_g_cost + heuristic(neighbour.timetable, total_studs_assigned), index, neighbour))
     
     return None
 
 
 # ****************** CSP ******************
 def check_subject_teacher_compatibility (subject, teacher, teachers):
+
     return subject in teachers[teacher][utils.MATERII]
 
 def check_subject_room_compatibility (subject, room, subjects, rooms):
@@ -244,7 +220,6 @@ def check_teacher_availability (value, solution):
     for var in solution:
         if var[4] == value[3] and var[1] == value[0] and string_to_tuple(value[1]) == string_to_tuple(var[2]):
             cost += 1000
-            # print(f'Teacher availability {value} is not available because of {var}')
     return cost
 
 
@@ -253,8 +228,6 @@ def check_room_availability (value, solution):
     for var in solution:
         if var[3] == value[2] and var[1] == value[0] and string_to_tuple(value[1]) == string_to_tuple(var[2]):
             cost += 1000
-            # print(f'Intervals {var[2][0]} {value[1][0]},  {var[2][1]}, {value[1][1]}')
-            # print(f' Room availability {value} is not available because of {var}')
     return cost
 
 
@@ -266,7 +239,6 @@ def check_teacher_num_hours (value, solution):
             count += 1
     if count >= 7:
         cost = 1000
-        # print(f'{value} is not available because of {count}')
 
     return cost
 
@@ -279,10 +251,8 @@ def check_soft_constraints(value):
     cost = 0
 
     if day not in soft_constraints[teacher]['preffered_days']:
-        # print(f'**** Teacher {teacher} doesn\'t want to work on day {day}')
         cost += 1
     if interval not in soft_constraints[teacher]['preffered_intervals']:
-        # print(f'**** Teacher {teacher} doesn\'t want to work on interval {interval}')
         cost += 1
 
     return cost
@@ -295,7 +265,6 @@ def solution_cost(value, solution):
     
 
 def csp(variables, acceptable_cost, solution, cost, apel_recursiv=0):
-    # global best_cost
     global rooms
     global domain
     global subjects
@@ -309,49 +278,22 @@ def csp(variables, acceptable_cost, solution, cost, apel_recursiv=0):
     # my_vars.sort(key=cmp_to_key(compare))
     chosen_var = my_vars[0]
 
-    # print(f'VARS {my_vars}')
-    # print(f'CHOSEN VAR {chosen_var}')
-    # print(f'**** Subjects before: {subjects}')
-    # print(f'DOMENII {domain}')
-    # # print(f'COST {cost} SOLUTION {solution}')
-    # print(f'WE ARE IN DOMAINE OF {chosen_var}')
     for value in domain[chosen_var]:
-        # print(f'APEL {apel_recursiv}')  
         new_cost = cost + solution_cost(value, solution)
-        # print(f'Value {value} has cost {new_cost}')
         if new_cost <= acceptable_cost:
             new_sol = solution + [(chosen_var,) + value]
-            # print(f'**** OK! {new_sol}')
-            # print(f'**** Accommodated more {rooms[value[2]]["Capacitate"]} students')
-            # domains[chosen_var].remove(value)
             subjects[chosen_var] = subjects[chosen_var] - rooms[value[2]]['Capacitate']
-            # print(f'**** Subjects BEFORE CALL: {subjects}')
-
-            # index_to_remove = domain[chosen_var].index(value)
-            # domain[chosen_var].pop(index_to_remove)
             
             if subjects[chosen_var] <= 0:
-                # print(f'Variable {chosen_var} is done!')
-                # input()
                 result = csp(my_vars[1:], acceptable_cost, new_sol, new_cost, apel_recursiv + 1)
             else:
-                # print(f'Variable {chosen_var} is not done!')
-                # input()
                 result = csp(my_vars, acceptable_cost, new_sol, new_cost, apel_recursiv + 1)
             
             if result is not None:
                 return result
             else:
-                # print(f'REZULTAT DE LA APELUL {apel_recursiv + 1}')
-                # print('********************** Am primit FAIL ***********************')
                 subjects[chosen_var] = subjects[chosen_var] + rooms[value[2]]['Capacitate']
                 new_sol.pop()
-                # index_to_remove = domain[chosen_var].index(popped_val)
-                # domain[chosen_var].append(value)
-                # print(f'Am dat pop la {popped_val}')
-                # print(f'Am updatat studenti la {chosen_var} cu {rooms[value[2]]["Capacitate"]}')
-                # print(f'**** Subjects after FAIL: {subjects}')
-                # domains[chosen_var].append(value)
 
     return None
 
@@ -397,11 +339,11 @@ if __name__ == '__main__':
     rooms = copy.deepcopy(dict_yaml[utils.SALI])
     subjects = copy.deepcopy(dict_yaml[utils.MATERII])
 
-    global subject_available_rooms
-    subject_available_rooms = dict(sorted({subject: len([room for room in rooms if subject in rooms[room][utils.MATERII]]) 
+    global sorted_subjects_by_rooms
+    sorted_subjects_by_rooms = dict(sorted({subject: len([room for room in rooms if subject in rooms[room][utils.MATERII]]) 
                                            for subject in subjects.keys()}.items(), key = lambda it: it[1]))
-    # print(sorted_subjects_by_rooms)
-    # input()
+    
+    # print(sorted_subjects_by_room_cap)
 
     global soft_constraints
     soft_constraints = {}
@@ -409,37 +351,40 @@ if __name__ == '__main__':
         soft_constraints[teacher] = {}
         soft_constraints[teacher]['preffered_days'], soft_constraints[teacher]['preffered_intervals'] = generate_preffered_constraints(teachers[teacher]['Constrangeri'])
 
-    # print(soft_constraints)
-    # input()
-
-    solution = None
     if algorithm == 'astar':
         # global astar_options
         # astar_options = []
-        initial_state = []
+        # initial_state = []
+        initial_state = Timetable({day: {interval: {room: None for room in rooms} for interval in intervals} for day in days})
 
-        # for day in days:
-        #     for subject in subjects:
-        #         for interval in intervals:
-        #             for room in rooms:
-        #                 if check_subject_room_compatibility(subject, room, subjects, rooms):
-        #                     for teacher in teachers:
-        #                         if check_subject_teacher_compatibility(subject, teacher, teachers):
-        #                             astar_options.append((subject, day, interval, room, teacher))
-
-        global total_studs
-        total_studs = 0
-        for subject, students in subjects.items():
-            total_studs += students
-
-        # print(f'SUBJECTS {subjects}')
-        # print(f'ROOMS {rooms}')
-        # print(heuristic([('DS', 'Luni', '(8, 10)', 'EG390', 'Andreea Dinu')]))
-
-        global teacher_constraints
-        teacher_constraints = {teacher: len(soft_constraints[teacher]['preffered_days']) + len(soft_constraints[teacher]['preffered_intervals']) for teacher in teachers}
+        global sorted_teacher_constraints
+        sorted_teacher_constraints = {teacher: len(soft_constraints[teacher]['preffered_days']) + len(soft_constraints[teacher]['preffered_intervals']) for teacher in teachers}
+        print(sorted_teacher_constraints)
+        
+        global sorted_rooms_by_capacity
+        sorted_rooms_by_capacity = dict(sorted({room: rooms[room]['Capacitate'] for room in rooms.keys()}.items(), key = lambda it: it[1], reverse=True))
 
         solution = astar(initial_state)
+
+        printable_solution = {}
+        for day in days:
+            printable_solution[day] = {}
+            for interval in intervals:
+                tuple_int = string_to_tuple(interval)
+                printable_solution[day][tuple_int] = {}
+                for room in rooms:
+                    printable_solution[day][tuple_int][room] = {}
+
+        for day, time_intervals in solution.timetable.items():
+            for interval, classrooms in time_intervals.items():
+                for classroom, assigned_subject in classrooms.items():
+                    if assigned_subject != None:
+                        printable_solution[day][string_to_tuple(interval)][classroom] = solution.timetable[day][interval][classroom]
+
+        print(utils.pretty_print_timetable_aux_zile(printable_solution, input_name))
+        print(f'Mandatory constraints violated: {check_constraints.check_mandatory_constraints(printable_solution, dict_yaml)}')
+        print(f'Soft constraints violated: {check_constraints.check_optional_constraints(printable_solution, dict_yaml)}')
+        # print(heuristic([('DS', 'Luni', '(8, 10)', 'EG390', 'Andreea Dinu')]))
         # print(solution)
 
     elif algorithm == 'csp':
@@ -475,22 +420,24 @@ if __name__ == '__main__':
         # print(solution)
 
         # Making the solution printable
-    printable_solution = {}
-    for day in days:
-        printable_solution[day] = {}
-        for interval in intervals:
-            my_interval = string_to_tuple(interval)
-            printable_solution[day][my_interval] = {}
-            for room in rooms:
-                printable_solution[day][my_interval][room] = {}
+        printable_solution = {}
+        for day in days:
+            printable_solution[day] = {}
+            for interval in intervals:
+                my_interval = string_to_tuple(interval)
+                printable_solution[day][my_interval] = {}
+                for room in rooms:
+                    printable_solution[day][my_interval][room] = {}
 
-    for var in solution:
-        day, interval, room, teacher = var[1], var[2], var[3], var[4]
-        my_interval = string_to_tuple(interval)
-        printable_solution[day][my_interval][room] = (teacher, var[0])
-    
-    # print(f'Initial subjects: {dict_yaml[utils.MATERII]}')
-    # print(f'Subject status: {subjects}')
-    print(utils.pretty_print_timetable_aux_zile(printable_solution, input_name))
-    print(f'Mandatory constraints violated: {check_constraints.check_mandatory_constraints(printable_solution, dict_yaml)}')
-    print(f'Soft constraints violated: {check_constraints.check_optional_constraints(printable_solution, dict_yaml)}')
+        for var in solution:
+            day, interval, room, teacher = var[1], var[2], var[3], var[4]
+            my_interval = string_to_tuple(interval)
+            printable_solution[day][my_interval][room] = (teacher, var[0])
+
+        # print(printable_solution)
+        
+        # print(f'Initial subjects: {dict_yaml[utils.MATERII]}')
+        # print(f'Subject status: {subjects}')
+        print(utils.pretty_print_timetable_aux_zile(printable_solution, input_name))
+        print(f'Mandatory constraints violated: {check_constraints.check_mandatory_constraints(printable_solution, dict_yaml)}')
+        print(f'Soft constraints violated: {check_constraints.check_optional_constraints(printable_solution, dict_yaml)}')
