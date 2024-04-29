@@ -62,7 +62,7 @@ def transition_cost(neighbour, curr_state):
     global subjects
     global teachers
 
-    cost_neighbour = 1
+    cost_neighbour = 10
     for day, time_interval in neighbour.items():
         for interval, classrooms in time_interval.items():
             for classroom, assigned_subject in classrooms.items():
@@ -101,7 +101,6 @@ def heuristic(timetable, total_studs_assigned):
                 if assigned_subject != None:
                     cost += sorted_subjects_by_rooms[assigned_subject[1]]
                     cost += sorted_teacher_constraints[assigned_subject[0]]
-                    cost += sorted_rooms_by_capacity[classroom]
 
     return cost
 
