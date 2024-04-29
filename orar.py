@@ -7,49 +7,95 @@ from functools import cmp_to_key
 from heapq import heappush, heappop
 
 def generate_neighbours(curr_state):
-    global astar_options
-    neighbours = []
-
-    curr_neighbour = []
-    if len(curr_state) != 0:
-        curr_neighbour += curr_state
-
-    for option in astar_options:
-        if solution_cost(option[1:], curr_neighbour) < 1000:
-            curr_neighbour.append(option)
-        if len(curr_neighbour) == len(curr_state) + 1:
-            neighbours.append(curr_neighbour)
-            curr_neighbour = []
-            curr_neighbour += curr_state
-
-    return neighbours
-
-
-def transition_cost(neighbour):
-    global soft_constraints
     global rooms
     global subjects
-
-    cost_neighbour = 1
-    for slot in neighbour:
-        if slot[1] not in soft_constraints[teacher]['preffered_days']:
-            cost_neighbour += 1
-        if slot[2] not in soft_constraints[teacher]['preffered_intervals']:
-            cost_neighbour += 1
+    global teachers
+    global days
+    global intervals
+    neighbours = []
 
     total_studs_assigned = {}
     for subject in subjects.keys():
         total_studs_assigned[subject] = 0
 
-    for slot in neighbour[:-1]:
+    for slot in curr_state:
         total_studs_assigned[slot[0]] += rooms[slot[3]]['Capacitate']
-
 
     total_studs_need_assignment = {subject: subjects[subject] - total_studs_assigned[subject] for subject in subjects.keys()}
 
+    # cost = check_teacher_availability(value, solution) + check_room_availability(value, solution) +\
+    #         check_teacher_num_hours(value, solution) + check_soft_constraints(value)
+    
+    for day in days:
+        for interval in intervals:
+            for subject in subjects:
+                if total_studs_need_assignment[subject] > 0:
+                    for room in rooms:
+                        if subject in rooms[room][utils.MATERII]:
+                            # input()
+                            if check_room_availability((day, interval, room, None), curr_state) >= 1000:
+                                continue
+                            for teacher in teachers:
+                                if subject in teachers[teacher][utils.MATERII]:
+                                    if check_teacher_availability((day, interval, room, teacher), curr_state) +\
+                                        check_teacher_num_hours((day, interval, room, teacher), curr_state)  < 1000:
+                                            neighbours.append(curr_state + [(subject, day, interval, room, teacher)])
+                                    
+                                
+    return neighbours
 
-    if subject == neighbour[-1][0] and total_studs_need_assignment[subject] <= 0:
-        cost_neighbour += 1
+
+# def check_teacher_availability (value, solution):
+#     cost = 0
+#     for var in solution:
+#         if var[4] == value[3] and var[1] == value[0] and string_to_tuple(value[1]) == string_to_tuple(var[2]):
+#             cost += 10
+#             # print(f'Teacher availability {value} is not available because of {var}')
+#     return cost
+
+
+# def check_room_availability (value, solution):
+#     cost = 0
+#     for var in solution:
+#         if var[3] == value[2] and var[1] == value[0] and string_to_tuple(value[1]) == string_to_tuple(var[2]):
+#             cost += 10
+#             # print(f'Intervals {var[2][0]} {value[1][0]},  {var[2][1]}, {value[1][1]}')
+#             # print(f' Room availability {value} is not available because of {var}')
+#     return cost
+
+
+# def check_teacher_num_hours (value, solution):
+#     cost = 0
+#     count = 0
+#     for var in solution:
+#         if var[4] == value[3]:
+#             count += 1
+#     if count >= 7:
+#         cost = 1000
+#         # print(f'{value} is not available because of {count}')
+
+#     return cost
+
+
+def transition_cost(neighbour, curr_state):
+    global soft_constraints
+    global rooms
+    global subjects
+    global teachers
+    global sorted_subjects_by_rooms
+    global teacher_constraints
+
+    cost_neighbour = 1
+    for slot in neighbour:
+        if slot[1] not in soft_constraints[slot[4]]['preffered_days']:
+            # print('Not preffered day')
+            cost_neighbour += 1000
+        if slot[2] not in soft_constraints[slot[4]]['preffered_intervals']:
+            # print(f'Not preffered interval {slot[2]} in {soft_constraints[teacher]["preffered_intervals"]}')
+            cost_neighbour += 1000
+
+    # cost_neighbour += solution_cost(neighbour[-1][1:], curr_state)
+    
 
     return cost_neighbour
                
@@ -57,10 +103,9 @@ def transition_cost(neighbour):
 def heuristic(timetable):
     global rooms
     global subjects   
+    global subject_available_rooms
 
-    total_studs_assigned = {}
-    for subject in subjects.keys():
-        total_studs_assigned[subject] = 0
+    total_studs_assigned = {subject: 0 for subject in subjects.keys()}
 
     for slot in timetable:
         total_studs_assigned[slot[0]] += rooms[slot[3]]['Capacitate']
@@ -68,19 +113,29 @@ def heuristic(timetable):
     max_classroom_capacity = {subject: max(room_details['Capacitate'] for room_details in rooms.values() if subject in room_details[utils.MATERII]) for subject in subjects.keys()}
     slots_needed = {subject: math.ceil((subjects[subject] - total_studs_assigned[subject]) / max_classroom_capacity[subject]) if subjects[subject] - total_studs_assigned[subject] > 0 else 0 for subject in subjects.keys()}
 
-    cost = sum(slots_needed.values())
+    cost = sum(slots_needed.values()) * 100
+
+    if len(timetable):
+        cost += subject_available_rooms[timetable[-1][0]]
+        cost += teacher_constraints[timetable[-1][4]]
+
     return cost
 
 
 def is_final(timetable):
     global rooms
     global total_studs
-
+    # print()
+    # print('***************** IS FINAL ?*****************')
     total_studs_assigned = {}
-    for subject in subjects.keys():
-        total_studs_assigned[subject] = 0
+    
+    total_studs_assigned = {subject: 0 for subject in subjects.keys()}
+    for slot in timetable:
+        total_studs_assigned[slot[0]] += rooms[slot[3]]['Capacitate']
     
     diff_studs = {subject: subjects[subject] - total_studs_assigned[subject] for subject in subjects.keys()}
+    print(diff_studs)
+    # print('***************** IS FINAL ?*****************')
     return sum(diff_studs.values()) <= 0
     
 
@@ -99,7 +154,13 @@ def get_g(timetable, discovered):
 
 def print_heap(heap):
     for elem in heap:
-        print(f'timetable {elem[0]}, cost {elem[1]}')
+        print(f'{elem[1]}, cost {elem[0]}')
+
+def sorted_teachers_neighbours(neighbours):
+    global soft_constraints
+    neighbour_teachers = set([slot[4] for neighbour in neighbours for slot in neighbour])
+    return sorted(neighbour_teachers, key=lambda x: len(soft_constraints[x]['preffered_days']) +\
+                   len(soft_constraints[x]['preffered_intervals']))
 
 def astar(initial_state):
     opened = []
@@ -109,35 +170,56 @@ def astar(initial_state):
     discovered.append((initial_state, 0))
 
     while opened:
-        #  DEBUG
-        # input()
-        print_heap(opened)
-        
-        curr_cost, curr_state = heappop(opened)
-        print(f'\nCurrent state {curr_state} with cost {curr_cost}')
-        print()
-        # input()
+        curr_f_cost, curr_state = heappop(opened)
+        printable_solution = {}
+        for day in days:
+            printable_solution[day] = {}
+            for interval in intervals:
+                my_interval = string_to_tuple(interval)
+                printable_solution[day][my_interval] = {}
+                for room in rooms:
+                    printable_solution[day][my_interval][room] = {}
 
+        for var in curr_state:
+            day, interval, room, teacher = var[1], var[2], var[3], var[4]
+            my_interval = string_to_tuple(interval)
+            printable_solution[day][my_interval][room] = (teacher, var[0])
+
+        print(utils.pretty_print_timetable_aux_zile(printable_solution, "inputs/orar_mediu_relaxat.yaml"))
+        # input()
+        # print()
+
+        print(f'Got current state {curr_state}')
         if is_final(curr_state):
             return curr_state
 
-        g_curr_state, index_curr_state = get_g(curr_state, discovered)
-        print(f'Got current state {curr_state} with G cost {g_curr_state} and index {index_curr_state}')
+        g_curr_state, index_curr_state = get_g(curr_state, discovered) 
+        print(f'\nCurrent state {curr_state} with cost {g_curr_state}')
+        # input()
 
-        for neighbour in generate_neighbours(curr_state):
+        neighbours = generate_neighbours(curr_state)
+        # sorted_neighbours = sorted_teachers_neighbours(neighbours)
+        for neighbour in neighbours:
             g_neighbour, index_neighbour = get_g(neighbour, discovered)
-            print(f'Got neighbour {neighbour} with G cost {g_neighbour} and index {index_neighbour}')
-            g_score_test = g_curr_state + transition_cost(neighbour)
+            # print(f'Got neighbour {neighbour} with G cost {g_neighbour} and index {index_neighbour}')
+            g_score_test = g_curr_state + transition_cost(neighbour, curr_state)
+            # print(f'************* G score test {g_score_test}')
+            # input()
+            # g_score_test = curr_f_cost + transition_cost(neighbour)
             if is_in_discovered(neighbour, discovered) and g_score_test < g_neighbour:
-                print(f'Updated neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
-                print('************************************')
+                # print(f'**************** H score {heuristic(neighbour)}')
+                # print(f'Updated neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
+                # input()
+
+                # print('************************************')
 
                 discovered.pop(index_neighbour)
                 discovered.append((neighbour, g_score_test))
                 heappush(opened, (g_score_test + heuristic(neighbour), neighbour))
             elif not is_in_discovered(neighbour, discovered):
-                print(f'Added neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
-                print('************************************')
+                # print(f'**************** H score {heuristic(neighbour)}')
+                # print(f'Added neighbour {neighbour} with F cost {g_score_test + heuristic(neighbour)}')
+                # print('************************************')
 
                 discovered.append((neighbour, g_score_test))
                 heappush(opened, (g_score_test + heuristic(neighbour), neighbour))
@@ -300,15 +382,26 @@ if __name__ == '__main__':
     file_no = int(sys.argv[2])
     input_name = f'inputs/{file_dict[file_no]}.yaml'
 
+    global dict_yaml
     dict_yaml = utils.read_yaml_file(input_name)
-    days = dict_yaml[utils.ZILE]
-    intervals = dict_yaml[utils.INTERVALE]
-    teachers = dict_yaml[utils.PROFESORI]
 
+
+    global teachers
     global rooms
     global subjects
+    global days
+    global intervals
+    intervals = dict_yaml[utils.INTERVALE]
+    days = dict_yaml[utils.ZILE]
+    teachers = dict_yaml[utils.PROFESORI]
     rooms = copy.deepcopy(dict_yaml[utils.SALI])
     subjects = copy.deepcopy(dict_yaml[utils.MATERII])
+
+    global subject_available_rooms
+    subject_available_rooms = dict(sorted({subject: len([room for room in rooms if subject in rooms[room][utils.MATERII]]) 
+                                           for subject in subjects.keys()}.items(), key = lambda it: it[1]))
+    # print(sorted_subjects_by_rooms)
+    # input()
 
     global soft_constraints
     soft_constraints = {}
@@ -316,20 +409,23 @@ if __name__ == '__main__':
         soft_constraints[teacher] = {}
         soft_constraints[teacher]['preffered_days'], soft_constraints[teacher]['preffered_intervals'] = generate_preffered_constraints(teachers[teacher]['Constrangeri'])
 
+    # print(soft_constraints)
+    # input()
+
     solution = None
     if algorithm == 'astar':
-        global astar_options
-        astar_options = []
+        # global astar_options
+        # astar_options = []
         initial_state = []
 
-        for day in days:
-            for subject in subjects:
-                for interval in intervals:
-                    for room in rooms:
-                        if check_subject_room_compatibility(subject, room, subjects, rooms):
-                            for teacher in teachers:
-                                if check_subject_teacher_compatibility(subject, teacher, teachers):
-                                    astar_options.append((subject, day, interval, room, teacher))
+        # for day in days:
+        #     for subject in subjects:
+        #         for interval in intervals:
+        #             for room in rooms:
+        #                 if check_subject_room_compatibility(subject, room, subjects, rooms):
+        #                     for teacher in teachers:
+        #                         if check_subject_teacher_compatibility(subject, teacher, teachers):
+        #                             astar_options.append((subject, day, interval, room, teacher))
 
         global total_studs
         total_studs = 0
@@ -339,6 +435,9 @@ if __name__ == '__main__':
         # print(f'SUBJECTS {subjects}')
         # print(f'ROOMS {rooms}')
         # print(heuristic([('DS', 'Luni', '(8, 10)', 'EG390', 'Andreea Dinu')]))
+
+        global teacher_constraints
+        teacher_constraints = {teacher: len(soft_constraints[teacher]['preffered_days']) + len(soft_constraints[teacher]['preffered_intervals']) for teacher in teachers}
 
         solution = astar(initial_state)
         # print(solution)
